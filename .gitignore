@@ -1,0 +1,25 @@
+# Generated code
+gen/
+**/wire_gen.go
+
+# Binaries
+bin/
+*.exe
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+
+# Claude Code
+.claude/
+
+# Crash dumps
+*.stackdump

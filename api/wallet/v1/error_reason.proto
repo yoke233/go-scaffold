@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package wallet.v1;
+
+option go_package = "project/gen/wallet/v1;walletv1";
+
+import "errors/errors.proto";
+
+enum ErrorReason {
+  option (errors.default_code) = 500;
+
+  ERROR_REASON_UNSPECIFIED           = 0;
+  ERROR_REASON_WALLET_NOT_FOUND      = 1 [(errors.code) = 404];
+  ERROR_REASON_WALLET_ALREADY_EXISTS = 2 [(errors.code) = 409];
+}

@@ -1,0 +1,70 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+output:
+  formats:
+    colored-line-number: {}
+
+linters:
+  enable:
+    - depguard
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - revive
+    - gocritic
+    - gocognit
+    - forbidigo
+
+  settings:
+    depguard:
+      rules:
+        feature-isolation:
+          files:
+            - "**/internal/feature/**/*.go"
+          allow:
+            - "$gostd"
+            - "project/gen"
+            - "project/internal/domain"
+            - "project/internal/conf"
+            - "project/internal/platform"
+            - "github.com"
+            - "google.golang.org"
+            - "gorm.io"
+          deny:
+            - pkg: "project/internal/feature"
+              desc: >
+                Features MUST NOT import other features directly.
+                Use internal/domain/ports interfaces for cross-domain communication.
+
+    goimports:
+      local-prefixes:
+        - project
+
+    gocognit:
+      min-complexity: 20
+
+    forbidigo:
+      forbid:
+        - pattern: "fmt\\.Print.*"
+          msg: "Use slog for logging, not fmt.Print"
+        - pattern: "log\\.Print.*"
+          msg: "Use slog for structured logging, not log.Print"
+      exclude-godoc-examples: true
+
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+
+  exclusions:
+    paths:
+      - gen/
+      - ".*_gen\\.go$"
+      - ".*\\.pb\\.go$"
+    rules:
+      - linters: [forbidigo]
+        path: cmd/

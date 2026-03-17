@@ -1,0 +1,12 @@
+version: v2
+modules:
+  - path: api
+deps:
+  - buf.build/googleapis/googleapis
+lint:
+  use:
+    - STANDARD
+  except:
+    - IMPORT_USED            # vendored errors.proto triggers this
+    - PACKAGE_VERSION_SUFFIX # we use user.v1 not user.v1beta1 etc
+  disallow_comment_ignores: true

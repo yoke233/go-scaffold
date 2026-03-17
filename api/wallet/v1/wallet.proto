@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package wallet.v1;
+
+option go_package = "project/gen/wallet/v1;walletv1";
+
+import "google/api/annotations.proto";
+
+service WalletService {
+  rpc GetWallet(GetWalletRequest) returns (GetWalletResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/wallets/{user_id}"
+    };
+  }
+
+  rpc CreateWallet(CreateWalletRequest) returns (CreateWalletResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/wallets"
+      body: "*"
+    };
+  }
+}
+
+message GetWalletRequest {
+  int64 user_id = 1;
+}
+
+message GetWalletResponse {
+  int64 user_id = 1;
+  int64 balance = 2;
+}
+
+message CreateWalletRequest {
+  int64 user_id = 1;
+}
+
+message CreateWalletResponse {
+  int64 user_id = 1;
+  int64 balance = 2;
+}
