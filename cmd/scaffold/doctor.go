@@ -52,24 +52,43 @@ func doctor(root string) ([]doctorCheck, error) {
 		return nil, err
 	}
 
+	manifestCheck, manifest := readScaffoldManifestCheck(absRoot)
 	checks := []doctorCheck{
+		manifestCheck,
 		checkPath(absRoot, "go.mod", true),
 		checkPath(absRoot, "Makefile", true),
 		checkPath(absRoot, "buf.yaml", true),
 		checkPath(absRoot, "buf.gen.yaml", true),
-		checkPath(absRoot, filepath.Join("configs", "config.yaml"), true),
-		checkPath(absRoot, filepath.Join("configs", "config.example.yaml"), true),
+		checkPath(absRoot, defaultConfigPath, true),
+		checkPath(absRoot, defaultConfigExamplePath, true),
+		checkPath(absRoot, defaultConfigLocalPath, false),
+		checkPath(absRoot, defaultConfigTestPath, false),
 		checkPath(absRoot, "api", true),
 		checkPath(absRoot, filepath.Join("db", "schema"), true),
 		checkPath(absRoot, filepath.Join("db", "migrations"), true),
+		checkPathWithHint(absRoot, manifest.Generated.FeatureRegistry, true, "run make generate"),
+		checkPathWithHint(absRoot, manifest.Generated.WireInjector, true, "run make generate"),
+		checkPathWithHint(absRoot, manifest.Docs.OpenAPIDir, false, "run make docs"),
 		checkTool("go", true),
 		checkTool("buf", true),
 		checkTool("wire", true),
+		checkTool("protoc-gen-openapi", true),
 		checkTool("golangci-lint", true),
 		checkTool("docker", false),
 	}
 
 	return checks, nil
+}
+
+func checkPathWithHint(root string, relativePath string, required bool, hint string) doctorCheck {
+	check := checkPath(root, relativePath, required)
+	if check.OK {
+		return check
+	}
+	if check.Detail == "missing" && strings.TrimSpace(hint) != "" {
+		check.Detail = "missing, " + hint
+	}
+	return check
 }
 
 func checkPath(root string, relativePath string, required bool) doctorCheck {
@@ -125,7 +144,15 @@ func checkTool(name string, required bool) doctorCheck {
 }
 
 func printDoctorReport(checks []doctorCheck) {
-	fmt.Println("doctor report:")
+	printCheckReport("doctor report:", checks)
+}
+
+func printUpgradeReport(checks []doctorCheck) {
+	printCheckReport("upgrade check:", checks)
+}
+
+func printCheckReport(title string, checks []doctorCheck) {
+	fmt.Println(title)
 	for _, check := range checks {
 		status := "ok"
 		if !check.OK && check.Required {

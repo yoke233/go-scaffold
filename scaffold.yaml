@@ -1,0 +1,6 @@
+scaffold_version: v0.4.0
+docs:
+  openapi_dir: docs/openapi
+generated:
+  feature_registry: cmd/server/features_gen.go
+  wire_injector: cmd/server/wire_gen.go
