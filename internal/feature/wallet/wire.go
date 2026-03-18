@@ -4,4 +4,4 @@ package wallet
 
 import "github.com/google/wire"
 
-var ProviderSet = wire.NewSet(NewRepo, NewUseCase, NewService, NewFacade, WireBind)
+var ProviderSet = wire.NewSet(NewRepo, NewUseCase, NewService, WireBind)

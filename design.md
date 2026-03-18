@@ -243,7 +243,7 @@ enum ErrorReason {
 Kratos 的 `protoc-gen-go-errors` 会自动生成辅助函数：
 
 ```go
-// gen/api/user/v1/error_reason.pb.go [AUTO-GENERATED]
+// gen/user/v1/error_reason.pb.go [AUTO-GENERATED]
 func ErrorUserNotFound(format string, args ...interface{}) *errors.Error { ... }
 func IsUserNotFound(err error) bool { ... }
 ```
@@ -379,7 +379,7 @@ import (
     "context"
     "log/slog"
 
-    orderpb "project/gen/api/order/v1"
+    orderpb "project/gen/order/v1"
     "project/internal/domain/ports"
 )
 
@@ -481,7 +481,7 @@ func convertListResponse(orders []*Order, total int64) *orderpb.ListOrdersRespon
 Kratos 从 proto 生成接口（在 `user_http.pb.go` 里）：
 
 ```go
-// gen/api/order/v1/order_http.pb.go [KRATOS 生成]
+// gen/order/v1/order_http.pb.go [KRATOS 生成]
 type OrderServiceHTTPServer interface {
     CreateOrder(context.Context, *CreateOrderRequest) (*CreateOrderResponse, error)
     CancelOrder(context.Context, *CancelOrderRequest) (*CancelOrderResponse, error)
@@ -497,7 +497,7 @@ package order
 
 import (
     "context"
-    orderpb "project/gen/api/order/v1"
+    orderpb "project/gen/order/v1"
 )
 
 type Service struct {
@@ -676,8 +676,8 @@ import (
     "github.com/go-kratos/kratos/v2/transport/http"
     "github.com/go-kratos/kratos/v2/transport/grpc"
 
-    userpb "project/gen/api/user/v1"
-    orderpb "project/gen/api/order/v1"
+    userpb "project/gen/user/v1"
+    orderpb "project/gen/order/v1"
     userfeature "project/internal/feature/user"
     orderfeature "project/internal/feature/order"
 )
@@ -881,6 +881,222 @@ plugins:
 ```
 
 手写总代码量约 **20 行**，得到完整的 HTTP + gRPC 双协议端点 + 请求校验 + 错误码 + 类型安全查询 + OpenAPI 文档。
+
+---
+
+## 作为脚手架还缺少什么
+
+当前这份设计已经把**业务代码怎么组织**讲清楚了，但一个可复用的脚手架还不止是目录结构和生成链路。
+
+如果目标是让别人 `clone` 下来后能稳定扩展、稳定生成、稳定上线，那么还缺下面几类设计约束。
+
+### 1. 脚手架验收标准还没定义
+
+先定义什么叫“脚手架可用”，否则后面会一直停留在 demo 状态。
+
+建议把最小验收标准写死为：
+
+```text
+git clone
+→ make bootstrap
+→ make test
+→ make add-feature name=order
+→ make generate
+→ make run
+```
+
+满足下面 5 条才算脚手架成立：
+
+- **初始化可成功**：新机器上执行一次 `make bootstrap` 就能安装工具、生成代码、完成基础校验
+- **生成可重复**：连续执行两次 `make generate`，产物不漂移、不重复追加、不误覆盖手写代码
+- **新增模块可落地**：新增一个业务域时，不需要手工复制目录或改 6 处 import
+- **默认运行可成功**：不接业务代码时，服务也能启动，并提供最基础的健康检查接口
+- **默认测试可通过**：仓库初始状态 `make test` 通过，而不是 clone 后先报缺少 `gen/`
+
+### 2. 缺少“项目初始化/自举”设计
+
+这是当前最明显的缺口。现在仓库里 `gen/` 被 `.gitignore` 忽略，导致刚 clone 的仓库直接 `go test ./...` 会失败。
+
+脚手架必须明确以下策略，不能写成“都可以”：
+
+- **生成产物是否提交仓库**
+- **首次拉起命令是什么**
+- **工具链版本如何固定**
+- **模块名、服务名、数据库名如何替换**
+
+建议定一个单一路径：
+
+- 默认 **不提交 `gen/`**
+- 提供 `make bootstrap`
+- `make bootstrap = make init + make generate + make test`
+- `make init` 使用**固定版本**安装工具，而不是全部 `@latest`
+
+额外需要补的初始化能力：
+
+- `scripts/bootstrap.ps1` / `scripts/bootstrap.sh`
+- `.env.example` 或 `configs/config.example.yaml`
+- `docker-compose.yaml` 或 `compose.yaml`，至少拉起本地 PostgreSQL
+- 新项目重命名入口，例如 `go run ./cmd/scaffold new --module github.com/acme/foo --service user`
+
+### 3. 缺少“模块生成”设计
+
+现在只有通用的 `codegen`，但没有真正面向脚手架使用者的“新增业务域”入口。
+
+一个成熟脚手架至少要支持：
+
+- `make add-feature name=user`
+- 自动创建 `api/user/v1/*.proto`
+- 自动创建 `internal/feature/user/`
+- 自动补齐 `facade.go` / `wire_bind.go` 的可选骨架
+- 自动注册到 `cmd/server/server.go` 与 `cmd/server/wire.go`，或者把注册动作也纳入生成链路
+
+这里的关键不是“能不能生成”，而是**谁是 source of truth**。建议明确：
+
+- `api/<feature>/v1/*.proto` 是接口真源
+- `db/migrations/*.sql` 是数据结构真源
+- `internal/feature/<feature>/usecase.go` 是业务逻辑真源
+- 其余胶水全部可重建
+
+### 4. 缺少“生成边界”设计
+
+脚手架最容易烂掉的地方，不是生成代码本身，而是**生成代码和手写代码的边界不清**。
+
+当前设计已经隐含了一部分规则，但还需要把规则写成硬约束：
+
+- **哪些文件允许覆盖**：如 `service.go`、`wire.go`
+- **哪些文件只在不存在时创建**：如 `usecase.go`、`repo.go`
+- **哪些文件永远不碰**：如 `facade.go`、`wire_bind.go`、`domain.go`
+- **生成器如何识别手写锚点**：是靠文件存在判断，还是靠特殊注释块
+- **生成失败如何回滚**：避免生成半套文件导致仓库脏且不可编译
+
+建议补一张规则表：
+
+| 文件 | 生成策略 | 说明 |
+|---|---|---|
+| `service.go` | 可覆盖 | 纯 proto 胶水，禁止手改 |
+| `wire.go` | 可覆盖 | 纯 provider 聚合，禁止手改 |
+| `usecase.go` | 仅首次创建 | 后续完全手写 |
+| `repo.go` | 仅首次创建 | 后续完全手写 |
+| `facade.go` | 仅首次创建 | 对外能力由开发者维护 |
+| `wire_bind.go` | 永不覆盖 | 避免误伤跨域绑定 |
+
+### 5. 缺少运行时基线设计
+
+目前设计已经提到了 Kratos、错误处理、日志，但对“默认服务该自带什么运行能力”还不够完整。
+
+脚手架建议内建以下基线，而不是让业务项目自己补：
+
+- `recovery` 中间件
+- `validate` 中间件
+- `request-id` 注入
+- 超时控制
+- 访问日志
+- 健康检查：`/healthz`、`/readyz`
+- Prometheus metrics
+- pprof（至少开发环境可开）
+- 统一错误日志字段：`trace_id`、`reason`、`code`
+
+这类能力一旦不进脚手架，后面每个项目都会重复补，而且风格会散。
+
+### 6. 缺少配置体系设计
+
+当前 `internal/conf/conf.go` 和 `configs/config.yaml` 只有最基础的服务地址和数据库 DSN，还不足以支撑脚手架复用。
+
+至少还需要明确：
+
+- **配置分层**：`config.example.yaml`、`config.local.yaml`、环境变量覆盖
+- **环境划分**：dev / test / prod
+- **敏感配置策略**：数据库密码、第三方 token 不进仓库
+- **配置加载顺序**：默认文件 → 环境文件 → 环境变量 → 命令行 flag
+- **配置校验**：启动时对关键配置做 fail-fast 校验
+
+建议统一成：
+
+```text
+configs/
+├── config.example.yaml
+├── config.local.yaml
+└── config.test.yaml
+```
+
+同时保留 `-conf` 覆盖路径，方便容器部署。
+
+### 7. 缺少测试模板设计
+
+`design.md` 已经写了“测试策略”，但还没有把它设计成脚手架自带能力。
+
+一个脚手架不该只写“建议怎么测”，而要直接给出：
+
+- `usecase_test.go` 示例
+- `repo_test.go` 基础夹具
+- testcontainers PostgreSQL 帮助函数
+- API integration test 示例
+- `make test` / `make test-unit` / `make test-integration`
+
+当前仓库里没有任何真实测试文件，这会让使用者不知道推荐写法，也无法验证生成骨架是否正确。
+
+### 8. 缺少本地开发与 CI 设计
+
+作为脚手架，开发体验必须固化，不然每个项目都会重新踩坑。
+
+建议补齐：
+
+- `make help`
+- `make fmt`
+- `make test`
+- `make ci`
+- GitHub Actions / GitLab CI 示例
+- CI 顺序：`buf lint` → `buf breaking` → `go test ./...` → `golangci-lint`
+- 数据库迁移检查：migration 文件命名、up/down 成对校验
+
+尤其是 `buf breaking`，对 proto-first 脚手架很重要，应该作为默认基线而不是后补。
+
+### 9. 缺少版本化与升级设计
+
+脚手架不是一次性代码模板，它会演进，所以还需要定义：
+
+- 脚手架自身版本号
+- 模板升级策略
+- 已生成项目如何跟进上游改动
+- 对生成器 breaking change 的处理方式
+
+如果没有这层设计，项目一旦被多个业务仓库复用，后续升级几乎一定失控。
+
+建议最小做法：
+
+- 在根目录增加 `scaffold.yaml`，记录脚手架版本
+- `cmd/scaffold doctor` 输出当前项目缺失项
+- `cmd/scaffold upgrade --check` 先只做检查，不自动改代码
+
+---
+
+## 演进优先级
+
+不要一上来追求“大而全”，建议按下面顺序推进。
+
+### P0：先让它成为“可启动、可生成、可验证”的脚手架
+
+- 明确 `gen/` 策略
+- 增加 `make bootstrap`
+- 固定工具版本
+- 增加最小测试集
+- 增加本地 PostgreSQL 运行方案
+- 补健康检查、recovery、validate、request-id
+
+### P1：再让它成为“可扩展”的脚手架
+
+- 增加 `add-feature` 命令
+- 自动注册 server 与 Wire
+- 增加配置分层
+- 增加 CI 模板
+- 增加 testcontainers 测试夹具
+
+### P2：最后做“可升级、可治理”的脚手架
+
+- 增加 `scaffold.yaml`
+- 增加 `doctor` / `upgrade --check`
+- 增加 proto breaking-check 基线
+- 增加模板版本迁移文档
 
 ---
 

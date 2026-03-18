@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: 1.65.0
+
+      - name: Install toolchain
+        run: make init
+
+      - name: Generate code
+        run: make generate
+
+      - name: Run tests
+        run: make test
+
+      - name: Run linters
+        run: make lint
+
+      - name: Check proto breaking changes
+        if: github.event_name == 'pull_request'
+        run: make proto-breaking BUF_BREAKING_AGAINST='.git#branch=origin/${{ github.base_ref }},subdir=api'

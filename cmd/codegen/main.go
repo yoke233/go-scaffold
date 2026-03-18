@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
+	"go/format"
 	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"text/template"
 )
@@ -17,6 +19,8 @@ type ServiceInfo struct {
 	ModuleName      string // e.g. "project"
 	ServiceName     string // e.g. "UserService"
 	FeaturePkg      string // e.g. "user"
+	FeatureName     string // e.g. "UserProfile"
+	FeatureVar      string // e.g. "userProfile"
 	FeatureDir      string // e.g. "internal/feature/user"
 	GenImportPath   string // e.g. "project/gen/user/v1"
 	GenPackageAlias string // e.g. "userv1"
@@ -34,6 +38,9 @@ type MethodInfo struct {
 func main() {
 	moduleName := readModuleName()
 	services := scanGeneratedFiles(moduleName)
+	sort.Slice(services, func(i, j int) bool {
+		return services[i].FeaturePkg < services[j].FeaturePkg
+	})
 
 	for i := range services {
 		// Detect if facade.go exists (for wire.go generation)
@@ -45,6 +52,7 @@ func main() {
 		generateRepo(services[i])
 		generateWire(services[i])
 	}
+	generateServerFeatures(moduleName, services)
 
 	if len(services) == 0 {
 		fmt.Println("codegen: no *HTTPServer interfaces found in gen/")
@@ -134,6 +142,8 @@ func parseHTTPFile(path string, moduleName string) *ServiceInfo {
 				ModuleName:      moduleName,
 				ServiceName:     serviceName,
 				FeaturePkg:      featurePkg,
+				FeatureName:     toPascalCase(featurePkg),
+				FeatureVar:      toLowerCamelCase(featurePkg),
 				FeatureDir:      "internal/feature/" + featurePkg,
 				GenImportPath:   genImportPath,
 				GenPackageAlias: genPkgAlias,
@@ -202,7 +212,27 @@ func generateWire(svc ServiceInfo) {
 	writeFile(svc.FeatureDir+"/wire.go", tplWire, svc, true)
 }
 
+func generateServerFeatures(moduleName string, services []ServiceInfo) {
+	if len(services) == 0 {
+		return
+	}
+
+	data := struct {
+		ModuleName string
+		Services   []ServiceInfo
+	}{
+		ModuleName: moduleName,
+		Services:   services,
+	}
+
+	writeTemplateFile("cmd/server/features_gen.go", tplServerFeatures, data, true)
+}
+
 func writeFile(path string, tpl string, data ServiceInfo, overwrite bool) {
+	writeTemplateFile(path, tpl, data, overwrite)
+}
+
+func writeTemplateFile(path string, tpl string, data any, overwrite bool) {
 	if !overwrite {
 		if _, err := os.Stat(path); err == nil {
 			fmt.Printf("codegen: skip %s (already exists)\n", path)
@@ -216,8 +246,17 @@ func writeFile(path string, tpl string, data ServiceInfo, overwrite bool) {
 		panic(fmt.Sprintf("codegen: template %s: %v", path, err))
 	}
 
+	output := buf.Bytes()
+	if filepath.Ext(path) == ".go" {
+		formatted, err := format.Source(output)
+		if err != nil {
+			panic(fmt.Sprintf("codegen: format %s: %v", path, err))
+		}
+		output = formatted
+	}
+
 	os.MkdirAll(filepath.Dir(path), 0o755)
-	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(path, output, 0o644); err != nil {
 		panic(fmt.Sprintf("codegen: write %s: %v", path, err))
 	}
 
@@ -226,6 +265,29 @@ func writeFile(path string, tpl string, data ServiceInfo, overwrite bool) {
 		action = "created"
 	}
 	fmt.Printf("codegen: %s %s\n", action, path)
+}
+
+func toPascalCase(name string) string {
+	parts := strings.Split(name, "_")
+	var builder strings.Builder
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		builder.WriteString(strings.ToUpper(part[:1]))
+		if len(part) > 1 {
+			builder.WriteString(part[1:])
+		}
+	}
+	return builder.String()
+}
+
+func toLowerCamelCase(name string) string {
+	pascal := toPascalCase(name)
+	if pascal == "" {
+		return ""
+	}
+	return strings.ToLower(pascal[:1]) + pascal[1:]
 }
 
 // --- Templates ---
@@ -261,15 +323,27 @@ import (
 	"log/slog"
 
 	{{.GenPackageAlias}} "{{.GenImportPath}}"
+	"{{.ModuleName}}/internal/platform/database"
+
+	"gorm.io/gorm"
 )
 
 type UseCase struct {
 	repo   *Repo
+	uow    *database.UnitOfWork
+	repoFactory func(db *gorm.DB) *Repo
 	logger *slog.Logger
 }
 
-func NewUseCase(repo *Repo, logger *slog.Logger) *UseCase {
-	return &UseCase{repo: repo, logger: logger}
+func NewUseCase(repo *Repo, uow *database.UnitOfWork, logger *slog.Logger) *UseCase {
+	return &UseCase{
+		repo: repo,
+		uow:  uow,
+		repoFactory: func(db *gorm.DB) *Repo {
+			return NewRepo(db)
+		},
+		logger: logger,
+	}
 }
 {{range .Methods}}
 func (uc *UseCase) {{.Name}}(ctx context.Context, req *{{$.GenPackageAlias}}.{{.RequestType}}) (*{{$.GenPackageAlias}}.{{.ResponseType}}, error) {
@@ -281,18 +355,24 @@ func (uc *UseCase) {{.Name}}(ctx context.Context, req *{{$.GenPackageAlias}}.{{.
 var tplRepo = `package {{.FeaturePkg}}
 
 import (
+	"context"
+
 	"{{.ModuleName}}/gen/query"
+	"{{.ModuleName}}/internal/platform/database"
 
 	"gorm.io/gorm"
 )
 
 type Repo struct {
 	db *gorm.DB
-	q  *query.Query
 }
 
 func NewRepo(db *gorm.DB) *Repo {
-	return &Repo{db: db, q: query.Use(db)}
+	return &Repo{db: db}
+}
+
+func (r *Repo) query(ctx context.Context) *query.Query {
+	return query.Use(database.DB(ctx, r.db))
 }
 `
 
@@ -302,5 +382,54 @@ package {{.FeaturePkg}}
 
 import "github.com/google/wire"
 
-var ProviderSet = wire.NewSet(NewRepo, NewUseCase, NewService{{if .HasFacade}}, NewFacade, WireBind{{end}})
+var ProviderSet = wire.NewSet(NewRepo, NewUseCase, NewService{{if .HasFacade}}, WireBind{{end}})
+`
+
+var tplServerFeatures = `// Code generated by codegen. DO NOT EDIT.
+
+package main
+
+import (
+	kratosgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
+	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
+	"github.com/google/wire"
+{{- range .Services}}
+	{{.GenPackageAlias}} "{{$.ModuleName}}/gen/{{.FeaturePkg}}/v1"
+	{{.FeaturePkg}}feature "{{$.ModuleName}}/internal/feature/{{.FeaturePkg}}"
+{{- end}}
+)
+
+type featureServices struct {
+{{- range .Services}}
+	{{.FeatureVar}} *{{.FeaturePkg}}feature.Service
+{{- end}}
+}
+
+func newFeatureServices({{- range .Services}}
+	{{.FeatureVar}} *{{.FeaturePkg}}feature.Service,
+{{- end}}
+) *featureServices {
+	return &featureServices{ {{- range .Services}}
+		{{.FeatureVar}}: {{.FeatureVar}},
+	{{- end}}
+	}
+}
+
+var featureProviderSet = wire.NewSet({{- range .Services}}
+	{{.FeaturePkg}}feature.ProviderSet,
+{{- end}}
+	newFeatureServices,
+)
+
+func registerHTTPServices(srv *kratoshttp.Server, services *featureServices) {
+{{- range .Services}}
+	{{.GenPackageAlias}}.Register{{.ServiceName}}HTTPServer(srv, services.{{.FeatureVar}})
+{{- end}}
+}
+
+func registerGRPCServices(srv *kratosgrpc.Server, services *featureServices) {
+{{- range .Services}}
+	{{.GenPackageAlias}}.Register{{.ServiceName}}Server(srv, services.{{.FeatureVar}})
+{{- end}}
+}
 `

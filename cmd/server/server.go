@@ -1,32 +1,48 @@
 package main
 
 import (
+	nethttp "net/http"
+
+	validate "github.com/go-kratos/kratos/contrib/middleware/validate/v2"
 	"github.com/go-kratos/kratos/v2"
+	"github.com/go-kratos/kratos/v2/middleware/recovery"
 	kratosgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
 	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
+	"gorm.io/gorm"
 
-	userv1 "project/gen/user/v1"
-	walletv1 "project/gen/wallet/v1"
 	"project/internal/conf"
-	"project/internal/feature/user"
-	"project/internal/feature/wallet"
+	"project/internal/platform/httpx"
+	"project/internal/platform/middleware/requestid"
 )
 
-func newHTTPServer(c *conf.Bootstrap, userSvc *user.Service, walletSvc *wallet.Service) *kratoshttp.Server {
+func newHTTPServer(c *conf.Bootstrap, db *gorm.DB, services *featureServices) *kratoshttp.Server {
 	srv := kratoshttp.NewServer(
 		kratoshttp.Address(c.Server.HTTP.Addr),
+		kratoshttp.Middleware(
+			recovery.Recovery(),
+			requestid.Server(),
+			validate.ProtoValidate(),
+		),
 	)
-	userv1.RegisterUserServiceHTTPServer(srv, userSvc)
-	walletv1.RegisterWalletServiceHTTPServer(srv, walletSvc)
+	srv.HandleFunc("/healthz", httpx.HealthzHandler())
+	srv.Handle("/readyz", httpx.ReadyzHandler(httpx.DBReadinessCheck(db)))
+	srv.HandleFunc("/", func(w nethttp.ResponseWriter, _ *nethttp.Request) {
+		w.WriteHeader(nethttp.StatusNotFound)
+	})
+	registerHTTPServices(srv, services)
 	return srv
 }
 
-func newGRPCServer(c *conf.Bootstrap, userSvc *user.Service, walletSvc *wallet.Service) *kratosgrpc.Server {
+func newGRPCServer(c *conf.Bootstrap, services *featureServices) *kratosgrpc.Server {
 	srv := kratosgrpc.NewServer(
 		kratosgrpc.Address(c.Server.GRPC.Addr),
+		kratosgrpc.Middleware(
+			recovery.Recovery(),
+			requestid.Server(),
+			validate.ProtoValidate(),
+		),
 	)
-	userv1.RegisterUserServiceServer(srv, userSvc)
-	walletv1.RegisterWalletServiceServer(srv, walletSvc)
+	registerGRPCServices(srv, services)
 	return srv
 }
 

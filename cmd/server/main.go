@@ -2,20 +2,20 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
-
-	"gopkg.in/yaml.v3"
 
 	"project/internal/conf"
 )
 
 func main() {
 	confPath := flag.String("conf", "configs/config.yaml", "config path")
+	appEnv := flag.String("env", "", "app env, for example local/test/prod")
 	flag.Parse()
 
-	bc := loadConfig(*confPath)
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	bc := loadConfig(*confPath, *appEnv)
+	logger := newLogger(bc)
 
 	app, cleanup, err := wireApp(bc, logger)
 	if err != nil {
@@ -28,14 +28,32 @@ func main() {
 	}
 }
 
-func loadConfig(path string) *conf.Bootstrap {
-	data, err := os.ReadFile(path)
+func loadConfig(path string, env string) *conf.Bootstrap {
+	bc, err := conf.Load(conf.LoadOptions{
+		Path: path,
+		Env:  env,
+	})
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("load config: %w", err))
 	}
-	var bc conf.Bootstrap
-	if err := yaml.Unmarshal(data, &bc); err != nil {
-		panic(err)
+
+	return bc
+}
+
+func newLogger(bc *conf.Bootstrap) *slog.Logger {
+	var level slog.Level
+	switch bc.Log.Level {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
 	}
-	return &bc
+
+	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: level,
+	}))
 }

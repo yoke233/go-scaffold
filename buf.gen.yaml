@@ -1,9 +1,6 @@
 version: v2
 inputs:
-  - directory: .
-    paths:
-      - api/user
-      - api/wallet
+  - directory: api
 plugins:
   - local: protoc-gen-go
     out: gen

@@ -4,30 +4,66 @@ import (
 	"context"
 	"log/slog"
 
+	"project/gen/model"
 	userv1 "project/gen/user/v1"
 	"project/internal/domain/ports"
+	"project/internal/platform/database"
+
+	"gorm.io/gorm"
 )
 
-type UseCase struct {
-	repo        *Repo
-	walletQuery ports.WalletQuery
-	logger      *slog.Logger
+type userRepo interface {
+	ExistsByEmail(ctx context.Context, email string) (bool, error)
+	Create(ctx context.Context, name, email string) (*model.User, error)
+	GetByID(ctx context.Context, id int64) (*model.User, error)
 }
 
-func NewUseCase(repo *Repo, wq ports.WalletQuery, logger *slog.Logger) *UseCase {
-	return &UseCase{repo: repo, walletQuery: wq, logger: logger}
+type unitOfWork interface {
+	Do(ctx context.Context, fn func(scope *database.Scope) error) error
+}
+
+type UseCase struct {
+	repo         userRepo
+	uow          unitOfWork
+	repoFactory  func(db *gorm.DB) userRepo
+	walletQuery  ports.WalletQuery
+	walletWriter ports.WalletWriter
+	logger       *slog.Logger
+}
+
+func NewUseCase(repo *Repo, uow *database.UnitOfWork, wq ports.WalletQuery, ww ports.WalletWriter, logger *slog.Logger) *UseCase {
+	return &UseCase{
+		repo: repo,
+		uow:  uow,
+		repoFactory: func(db *gorm.DB) userRepo {
+			return NewRepo(db)
+		},
+		walletQuery:  wq,
+		walletWriter: ww,
+		logger:       logger,
+	}
 }
 
 func (uc *UseCase) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) (*userv1.CreateUserResponse, error) {
-	exists, err := uc.repo.ExistsByEmail(ctx, req.Email)
-	if err != nil {
-		return nil, err
-	}
-	if exists {
-		return nil, userv1.ErrorErrorReasonUserAlreadyExists("email %s", req.Email)
-	}
+	var u *model.User
+	err := uc.uow.Do(ctx, func(scope *database.Scope) error {
+		repo := database.Use(scope, uc.repoFactory)
 
-	u, err := uc.repo.Create(ctx, req.Name, req.Email)
+		exists, err := repo.ExistsByEmail(scope.Context(), req.Email)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return userv1.ErrorErrorReasonUserAlreadyExists("email %s", req.Email)
+		}
+
+		u, err = repo.Create(scope.Context(), req.Name, req.Email)
+		if err != nil {
+			return err
+		}
+
+		return uc.walletWriter.CreateByUserID(scope.Context(), u.ID)
+	})
 	if err != nil {
 		return nil, err
 	}

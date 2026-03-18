@@ -6,4 +6,4 @@ import (
 	"project/internal/platform/database"
 )
 
-var ProviderSet = wire.NewSet(database.NewDB)
+var ProviderSet = wire.NewSet(database.NewDB, database.NewTransactor, database.NewUnitOfWork)

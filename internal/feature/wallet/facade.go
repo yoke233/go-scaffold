@@ -18,3 +18,8 @@ func (f *Facade) GetBalanceByUserID(ctx context.Context, userID int64) (int64, e
 	}
 	return w.Balance, nil
 }
+
+func (f *Facade) CreateByUserID(ctx context.Context, userID int64) error {
+	_, err := f.repo.Create(ctx, userID)
+	return err
+}

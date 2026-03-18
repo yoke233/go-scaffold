@@ -1,8 +1,15 @@
 package conf
 
 type Bootstrap struct {
+	App    App    `yaml:"app"`
 	Server Server `yaml:"server"`
+	Log    Log    `yaml:"log"`
 	Data   Data   `yaml:"data"`
+}
+
+type App struct {
+	Name string `yaml:"name"`
+	Env  string `yaml:"env"`
 }
 
 type Server struct {
@@ -16,6 +23,10 @@ type HTTPServer struct {
 
 type GRPCServer struct {
 	Addr string `yaml:"addr"`
+}
+
+type Log struct {
+	Level string `yaml:"level"`
 }
 
 type Data struct {
