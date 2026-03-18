@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	currentScaffoldVersion   = "v0.4.0"
+	currentScaffoldVersion   = "v0.5.0"
 	scaffoldManifestFile     = "scaffold.yaml"
 	defaultOpenAPIDir        = "docs/openapi"
 	defaultFeaturesGenPath   = "cmd/server/features_gen.go"

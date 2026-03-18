@@ -18,6 +18,11 @@ server:
     addr: "0.0.0.0:8080"
   grpc:
     addr: "0.0.0.0:9090"
+auth:
+  jwt:
+    issuer: "demo"
+    signing_key: "secret"
+    access_token_ttl: "1h"
 data:
   database:
     dsn: "postgres://base"
@@ -63,6 +68,11 @@ server:
     addr: "0.0.0.0:8080"
   grpc:
     addr: "0.0.0.0:9090"
+auth:
+  jwt:
+    issuer: "demo"
+    signing_key: "secret"
+    access_token_ttl: "1h"
 data:
   database:
     dsn: "postgres://base"
@@ -70,6 +80,9 @@ data:
 
 	t.Setenv("APP_ENV", "local")
 	t.Setenv("APP_HTTP_ADDR", "127.0.0.1:28080")
+	t.Setenv("APP_AUTH_JWT_ISSUER", "override-issuer")
+	t.Setenv("APP_AUTH_JWT_SIGNING_KEY", "override-secret")
+	t.Setenv("APP_AUTH_JWT_ACCESS_TOKEN_TTL", "30m")
 	t.Setenv("APP_DATABASE_DSN", "postgres://override")
 	t.Setenv("APP_LOG_LEVEL", "warn")
 
@@ -87,6 +100,15 @@ data:
 	if cfg.Log.Level != "warn" {
 		t.Fatalf("expected warn log level, got %s", cfg.Log.Level)
 	}
+	if cfg.Auth.JWT.Issuer != "override-issuer" {
+		t.Fatalf("expected auth issuer override, got %s", cfg.Auth.JWT.Issuer)
+	}
+	if cfg.Auth.JWT.SigningKey != "override-secret" {
+		t.Fatalf("expected auth signing key override, got %s", cfg.Auth.JWT.SigningKey)
+	}
+	if cfg.Auth.JWT.AccessTokenTTL != "30m" {
+		t.Fatalf("expected auth ttl override, got %s", cfg.Auth.JWT.AccessTokenTTL)
+	}
 }
 
 func TestLoadValidatesRequiredFields(t *testing.T) {
@@ -98,6 +120,32 @@ app:
 server:
   http:
     addr: ""
+`)
+
+	if _, err := Load(LoadOptions{Path: basePath}); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestLoadRejectsInvalidJWTDuration(t *testing.T) {
+	root := t.TempDir()
+	basePath := filepath.Join(root, "config.yaml")
+	writeConfigFile(t, basePath, `
+app:
+  name: "demo"
+server:
+  http:
+    addr: "0.0.0.0:8080"
+  grpc:
+    addr: "0.0.0.0:9090"
+auth:
+  jwt:
+    issuer: "demo"
+    signing_key: "secret"
+    access_token_ttl: "not-a-duration"
+data:
+  database:
+    dsn: "postgres://base"
 `)
 
 	if _, err := Load(LoadOptions{Path: basePath}); err == nil {

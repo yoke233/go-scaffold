@@ -5,6 +5,12 @@ app:
 log:
   level: "info"
 
+auth:
+  jwt:
+    issuer: "go-scaffold"
+    signing_key: "dev-secret-change-me"
+    access_token_ttl: "2h"
+
 server:
   http:
     addr: "0.0.0.0:8080"

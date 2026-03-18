@@ -4,6 +4,7 @@ type Bootstrap struct {
 	App    App    `yaml:"app"`
 	Server Server `yaml:"server"`
 	Log    Log    `yaml:"log"`
+	Auth   Auth   `yaml:"auth"`
 	Data   Data   `yaml:"data"`
 }
 
@@ -27,6 +28,16 @@ type GRPCServer struct {
 
 type Log struct {
 	Level string `yaml:"level"`
+}
+
+type Auth struct {
+	JWT JWTAuth `yaml:"jwt"`
+}
+
+type JWTAuth struct {
+	Issuer         string `yaml:"issuer"`
+	SigningKey     string `yaml:"signing_key"`
+	AccessTokenTTL string `yaml:"access_token_ttl"`
 }
 
 type Data struct {

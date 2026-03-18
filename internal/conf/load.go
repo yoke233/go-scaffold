@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -55,8 +56,18 @@ func (b Bootstrap) Validate() error {
 		return errors.New("server.http.addr is required")
 	case strings.TrimSpace(b.Server.GRPC.Addr) == "":
 		return errors.New("server.grpc.addr is required")
+	case strings.TrimSpace(b.Auth.JWT.Issuer) == "":
+		return errors.New("auth.jwt.issuer is required")
+	case strings.TrimSpace(b.Auth.JWT.SigningKey) == "":
+		return errors.New("auth.jwt.signing_key is required")
+	case strings.TrimSpace(b.Auth.JWT.AccessTokenTTL) == "":
+		return errors.New("auth.jwt.access_token_ttl is required")
 	case strings.TrimSpace(b.Data.Database.DSN) == "":
 		return errors.New("data.database.dsn is required")
+	}
+
+	if _, err := time.ParseDuration(b.Auth.JWT.AccessTokenTTL); err != nil {
+		return fmt.Errorf("auth.jwt.access_token_ttl must be a valid duration: %w", err)
 	}
 
 	level := strings.ToLower(strings.TrimSpace(b.Log.Level))
@@ -76,6 +87,13 @@ func defaultBootstrap() Bootstrap {
 		},
 		Log: Log{
 			Level: "info",
+		},
+		Auth: Auth{
+			JWT: JWTAuth{
+				Issuer:         "go-scaffold",
+				SigningKey:     "dev-secret-change-me",
+				AccessTokenTTL: "2h",
+			},
 		},
 	}
 }
@@ -97,6 +115,9 @@ func applyEnvOverrides(cfg *Bootstrap) {
 	cfg.Server.HTTP.Addr = firstNonEmpty(os.Getenv("APP_HTTP_ADDR"), cfg.Server.HTTP.Addr)
 	cfg.Server.GRPC.Addr = firstNonEmpty(os.Getenv("APP_GRPC_ADDR"), cfg.Server.GRPC.Addr)
 	cfg.Log.Level = firstNonEmpty(os.Getenv("APP_LOG_LEVEL"), cfg.Log.Level)
+	cfg.Auth.JWT.Issuer = firstNonEmpty(os.Getenv("APP_AUTH_JWT_ISSUER"), cfg.Auth.JWT.Issuer)
+	cfg.Auth.JWT.SigningKey = firstNonEmpty(os.Getenv("APP_AUTH_JWT_SIGNING_KEY"), cfg.Auth.JWT.SigningKey)
+	cfg.Auth.JWT.AccessTokenTTL = firstNonEmpty(os.Getenv("APP_AUTH_JWT_ACCESS_TOKEN_TTL"), cfg.Auth.JWT.AccessTokenTTL)
 	cfg.Data.Database.DSN = firstNonEmpty(os.Getenv("APP_DATABASE_DSN"), cfg.Data.Database.DSN)
 }
 

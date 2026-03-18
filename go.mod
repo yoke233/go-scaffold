@@ -3,6 +3,7 @@ module project
 go 1.25.6
 
 require (
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/go-kratos/kratos/contrib/middleware/validate/v2 v2.0.0-20260312121050-e36259de52a8
 	github.com/go-kratos/kratos/v2 v2.9.2
 	github.com/google/uuid v1.6.0

@@ -13,6 +13,7 @@
 - GORM Gen + schema SQL 生成查询代码
 - Wire 编译期依赖注入
 - `UnitOfWork` 风格事务封装，方便跨 repo 组合写法
+- 统一 JWT 认证、中间件注入、当前用户上下文
 - 配置分层：`config.yaml` + `config.{env}.yaml` + 环境变量覆盖
 - `scaffold add-feature` 新增业务域骨架
 - `scaffold doctor` / `upgrade --check` 做最小治理闭环
@@ -128,7 +129,39 @@ configs/config.yaml
 - `APP_HTTP_ADDR`
 - `APP_GRPC_ADDR`
 - `APP_LOG_LEVEL`
+- `APP_AUTH_JWT_ISSUER`
+- `APP_AUTH_JWT_SIGNING_KEY`
+- `APP_AUTH_JWT_ACCESS_TOKEN_TTL`
 - `APP_DATABASE_DSN`
+
+## 认证约定
+
+当前脚手架默认使用 `JWT Bearer` 认证，HTTP 和 gRPC 共用一套认证中间件。
+
+传递方式：
+
+- HTTP：`Authorization: Bearer <access-token>`
+- gRPC metadata：`authorization: Bearer <access-token>`
+
+当前公开入口：
+
+- `GET /healthz`
+- `GET /readyz`
+- `CreateUser`
+
+当前用户上下文会注入最小主体：
+
+- `user_id`
+- `subject`
+- `iat`
+- `exp`
+
+当前版本只提供认证底座，不包含：
+
+- 登录 API
+- 密码存储
+- refresh token
+- 多租户
 
 ## 文档与生成产物
 
