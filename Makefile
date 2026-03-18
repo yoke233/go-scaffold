@@ -1,4 +1,4 @@
-.PHONY: help init bootstrap add-feature fmt ci proto-breaking generate gen-proto gen-gorm gen-code gen-wire build run test lint lint-go lint-proto db-up db-down clean
+.PHONY: help init bootstrap add-feature doctor fmt ci proto-breaking generate gen-proto gen-gorm gen-code gen-wire build run test lint lint-go lint-proto db-up db-down clean
 
 PROTOC_GEN_GO_VERSION := v1.36.11
 PROTOC_GEN_GO_GRPC_VERSION := v1.5.1
@@ -13,6 +13,7 @@ help:
 	@echo "Targets:"
 	@echo "  make bootstrap   安装工具 + 生成代码 + 运行测试"
 	@echo "  make add-feature name=order   新增业务域骨架"
+	@echo "  make doctor      执行项目自检"
 	@echo "  make fmt         格式化 Go 代码"
 	@echo "  make ci          本地执行 CI 流程"
 	@echo "  make proto-breaking   检查 proto breaking change"
@@ -37,6 +38,9 @@ bootstrap: init generate test
 
 add-feature:
 	go run ./cmd/scaffold add-feature -name $(name)
+
+doctor:
+	go run ./cmd/scaffold doctor
 
 fmt:
 	gofmt -w $$(rg --files . -g '*.go')

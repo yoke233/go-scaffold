@@ -26,12 +26,14 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("missing subcommand, supported: add-feature")
+		return errors.New("missing subcommand, supported: add-feature, doctor")
 	}
 
 	switch args[0] {
 	case "add-feature":
 		return runAddFeature(args[1:])
+	case "doctor":
+		return runDoctor(args[1:])
 	default:
 		return fmt.Errorf("unknown subcommand %q", args[0])
 	}
